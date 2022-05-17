@@ -1,9 +1,4 @@
 #! usr/bin/python3.8
-import sys
-import copy
-import moveit_commander
-import moveit_msgs.msg
-import geometry_msgs.msg
 from cv_bridge import CvBridge
 import cv2
 import rospy
@@ -18,27 +13,6 @@ upper_blue = np.array([130,255,255])
 bridge = CvBridge()
 twist=Twist()
 
-def movearm():
-    twist.linear.x=0
-    pub.publish(twist)
-    moveit_commander.roscpp_initialize(sys.argv)
-    robot = moveit_commander.RobotCommander()
-    scene = moveit_commander.PlanningSceneInterface()
-    group_name = "arm_group"
-    move_group = moveit_commander.MoveGroupCommander(group_name)
-    group_variable_values = move_group.get_current_joint_values()
-    group_variable_values = move_group.get_current_joint_values()
-
-    group_variable_values[1]=1
-    move_group.set_joint_value_target(group_variable_values)
-
-    plan2= move_group.plan()
-    move_group.go(wait=True)
-    move_group.stop()
-    # It is always good to clear your targets after planning with poses.
-    # Note: there is no equivalent function for clear_joint_value_targets()
-    move_group.clear_pose_targets()
-    moveit_commander.roscpp_shutdown()
 
 
 def callback(msg):
@@ -79,16 +53,10 @@ def callback(msg):
     elif(270<xc<295):
         twist.angular.z=0
     pub.publish(twist) 
-    
-    
     cv2.waitKey(1)
 
 rospy.init_node("blobber")
-display_trajectory_publisher = rospy.Publisher(
-    "/move_group/display_planned_path",
-    moveit_msgs.msg.DisplayTrajectory,
-    queue_size=20,
-)
+
 pub=rospy.Publisher("/cmd_vel",Twist,queue_size=10)
 rospy.Subscriber("/camera_1/color/image_raw",Image, callback) 
 
