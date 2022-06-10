@@ -8,6 +8,7 @@ import cv2
 import rospy
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Twist
+from std_msgs.msg import String
 import numpy as np
 
 
@@ -25,50 +26,32 @@ class blob_pusher:
     def __init__(self):
         self.xc = 0
         self.yc = 0
+        self.circles = None
         self.camera_topic = "/camera_1/color/image_raw"
         self.vel_topic = "/cmd_vel"
-
-        moveit_commander.roscpp_initialize(sys.argv)
-        robot= moveit_commander.RobotCommander()
-        scene = moveit_commander.PlanningSceneInterface()
-        arm_group = "arm_group"
-        self.move_group = moveit_commander.MoveGroupCommander(arm_group)
-        self.trajector_topic = "/move_group/display_planned_path"
-        display_trajectory_publisher = rospy.Publisher(
-            self.trajector_topic,
-            moveit_msgs.msg.DisplayTrajectory,
-            queue_size=20,
-            )
-        """" 
-        planning_frame = self.move_group.get_planning_frame()
-        print("============ Planning frame: %s" % planning_frame)
-
-        # We can also print the name of the end-effector link for this group:
-        eef_link = self.move_group.get_end_effector_link()
-        print("============ End effector link: %s" % eef_link)
-
-        # We can get a list of all the groups in the robot:
-        group_names = robot.get_group_names()
-        print("============ Available Planning Groups:", robot.get_group_names())
-
-        # Sometimes for debugging it is useful to print the entire state of the
-        # robot:
-        print("============ Printing robot state")
-        print(robot.get_current_state())
-        print("")
-
-        """
+        self.arm_topic = "/arm_state"
 
         rospy.Subscriber(self.camera_topic,Image,self.callback)
         self.pub = rospy.Publisher(self.vel_topic,Twist,queue_size=10)
+        self.pub2 = rospy.Publisher(self.arm_topic,String,queue_size=10,latch=True)
         self.bridge = CvBridge()
-        self.state = "No State"
+        self.mobile_state = "No State"
+        self.arm_state="Home"
         self.twist = Twist()
         self.current_img = None
 
 
     def callback(self,img_msg):
         self.current_img = img_msg
+
+    def arm_mobile_state_chooser(self):
+        self.mobile_state_machine()
+        
+        self.finding_circles()
+        print(self.arm_state)
+        
+
+
         
     def finding_circles(self):
         if self.current_img is not None:
@@ -94,60 +77,57 @@ class blob_pusher:
 
                 cv2.putText(img,"ROI Center ({0},{1})".format(self.w/2 ,self.h/2 ),(240,290),cv2.FONT_HERSHEY_SIMPLEX,1,(255,0,150),3)
                 cv2.rectangle(img,(350,450),(450,350),(0,255,0),3)
-            else:
-                self.locate()
+    
             cv2.imshow("output", img)
             cv2.waitKey(1)
-            self.state_machine()
+            
+            self.mobile_state_machine()
 
 
 #Control Functions
     def locate(self):
         self.twist.angular.z=0.5
     def move_forward(self):
-        self.twist.linear.x = 0.1
+        self.twist.linear.x = 0.3
         self.twist.angular.z = 0
     def stop(self):
         self.twist.linear.x=0
         self.twist.angular.z=0
-        
     def angular_adjustment(self):
         err = self.xc - self.w/2
         self.twist.angular.z = -float(err) / 700
-        print("Turning")
-    def push(self):
-        self.move_group.set_named_target = "push"
-        push_plan = self.move_group.go (wait=True)
-        self.move_group.stop()
-    def retract(self):
-        self.move_group.set_named_target = "dont_push"
-        retract_plan = self.move_group.go (wait=True)
-        self.move_group.stop()
-
 #Controller
-    def state_machine(self):
+    def mobile_state_machine(self):
     
-        if (self.yc)<395:
-            self.state = "Forward"
-            self.move_forward()
-            print("moving forward")
-            # self.retract()
-        else:
-            self.state = "Stop"
-            print("stopping")
-            self.stop()
-
-        
         if self.circles is None:
-            # rospy.sleep(2)
-            self.locate()
+            self.mobile_state="Locate"
         else:
-            self.angular_adjustment()
-        self.push()
-        self.pub.publish(self.twist)
-        
-            
+            if (self.yc)>340:
+                self.mobile_state = "Forward"
+                self.arm_state = "dont_push"
+            elif self.yc<320:
+                self.mobile_state = "In-Place"
+                self.arm_state = "push"
+                self.pub2.publish(self.arm_state)
+                self.arm_state = "dont_push"
+                self.pub2.publish(self.arm_state)
+        self.mobile_change_states(self.mobile_state)
 
+
+
+
+    def mobile_change_states(self,state):
+        if state == "Forward":
+            self.move_forward()
+        elif state == "In-Place":
+            self.stop()
+        elif state == "Locate":
+            self.locate()
+        # print(state)
+        if state!="Locate":
+            self.angular_adjustment()
+        self.pub.publish(self.twist)
+                
 
 if __name__=="__main__":
     rospy.init_node("blob_pusher")
@@ -155,7 +135,7 @@ if __name__=="__main__":
     rate = rospy.Rate(10)
     while True:
         try:
-            blobber.finding_circles()
+            blobber.arm_mobile_state_chooser()
             rate.sleep() #was important to have a smooth view
             #Take-Away: if not functioning in callback(at rate of callback) --> must specify a rate
             # blobber.state_machine()
