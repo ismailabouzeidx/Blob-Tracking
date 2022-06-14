@@ -1,5 +1,5 @@
-# Blob-Tracking
-Source code of a Blue blob tracking algo using OpenCV.
+# Blob-Pushing
+Source code of a Blue blob tracking/pushing algo using OpenCV & Moveit!.
 
 The code is works for the most part; however, it will be improved with the future use of services to declare arm states "push/dont push".
 The code is capable of detecting and following a blob but if the blob is not in-view at all times, errors arise.
